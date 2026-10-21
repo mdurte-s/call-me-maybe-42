@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "call-me-maybe"
+version = "0.1.0"
+description = "42 school project Call Me Maybe"
+# readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "mdurte-s", email = "mdurte-s@student.42.pt" }
+]
+dependencies = [
+    "numpy>=2.0.0",
+    "pydantic>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "flake8>=7.0.0",
+    "mypy>=1.10.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

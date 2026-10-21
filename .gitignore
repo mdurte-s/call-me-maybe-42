@@ -1,0 +1,25 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environments
+.venv/
+env/
+venv/
+
+# Type checking & Linting
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Project output
+data/output/
+output/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
