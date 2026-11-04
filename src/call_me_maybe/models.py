@@ -1,10 +1,8 @@
 import json
 from pathlib import Path
 from typing import Any, Type, TypeVar
-
 from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError
-
-from src.utils import error
+from src.call_me_maybe.utils import error
 
 
 T = TypeVar("T", bound=BaseModel)

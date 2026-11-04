@@ -1,39 +1,18 @@
-import argparse
 import sys
-from src.models import (
+from llm_sdk.llm_sdk import Small_LLM_Model
+from .call_me_maybe import (
+    create_parser,
     DataIOError,
     FunctionCallResultList,
     FunctionDefinitionList,
     PromptList,
     load_and_validate_json,
+    load_vocab_mapping,
     save_json_results,
+    error,
+    bold_w,
+    bold_y
 )
-from src.utils import error, bold_y, bold_w
-
-
-def create_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="LLM Constrained Decoding Function Calling CLI Tool"
-    )
-    parser.add_argument(
-        "--functions_definition",
-        type=str,
-        default="data/input/functions_definition.json",
-        help="Path to the function definitions JSON file.",
-    )
-    parser.add_argument(
-        "--input",
-        type=str,
-        default="data/input/function_calling_tests.json",
-        help="Path to the input prompts JSON file.",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default="data/output/function_calling_results.json",
-        help="Path where the generated output JSON should be saved.",
-    )
-    return parser
 
 
 def main() -> None:
@@ -42,36 +21,43 @@ def main() -> None:
     cli_args = parser.parse_args(sys.argv[1:])
 
     try:
-        print(
-            f"{bold_y("\nLoading function definitions from:\n")}"
-            f"{cli_args.functions_definition}"
-        )
+        print(f"\n{bold_y('Loading function definitions from:')}")
+        print(cli_args.functions_definition)
+
         functions = load_and_validate_json(
             cli_args.functions_definition, FunctionDefinitionList
         )
-        print(f"{bold_y("\nFunctions:")}")
-        for f in functions.root:
-            print(f"\n{bold_w("Name:")} {f.name}")
-            print(f"{bold_w("Description:")} {f.description}")
-            print(f"{bold_w("Parameters:")} {f.parameters}")
-            print(f"{bold_w("Return:")} {f.returns}")
 
-        print(
-            f"{bold_y("\nLoading prompts from:\n")}"
-            f"{cli_args.input}"
-        )
+        print(f"\n{bold_y('Functions:')}")
+        for f in functions.root:
+            print(f"{bold_w('Name:')} {f.name}")
+            # print(f"{bold_w('Description:')} {f.description}")
+            # print(f"{bold_w('Parameters:')} {f.parameters}")
+            # print(f"{bold_w('Return:')} {f.returns}")
+
+        print(f"\n{bold_y('Loading prompts from:')}")
+        print(cli_args.input)
+
         prompts = load_and_validate_json(cli_args.input, PromptList)
-        print(f"{bold_y("\nFunctions:")}")
+
+        print(f"\n{bold_y('Prompts:')}")
         for p in prompts.root:
-            print(f"{bold_w("Prompt:")} {p.prompt}")
+            print(f"{bold_w('Prompt:')} {p.prompt}")
+
+        print(f"\n{bold_y('Loading LLM ...')}")
+        model = Small_LLM_Model()
+
+        vocab = load_vocab_mapping(model)
+        print(f"\n{bold_y('Vocab:')}\n[...]")
+        # for token_id, token_str in vocab.items():
+        #     print(f"{token_id}: {token_str}")
 
         # Output placeholder for Issue #2 validation test
         results = FunctionCallResultList([])
 
-        print(
-            f"{bold_y("\nSaving output results to:\n")}"
-            f"{cli_args.output}"
-        )
+        print(f"\n{bold_y('Saving output results to:')}")
+        print(cli_args.output)
+
         save_json_results(cli_args.output, results)
 
     except DataIOError as err:
