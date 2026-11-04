@@ -20,3 +20,13 @@ def load_vocab_mapping(model: Small_LLM_Model) -> dict[int, str]:
     }
 
     return vocab
+
+
+def get_valid_token_ids(current_json_str: str) -> list[int]:
+    """
+    1. Llooks at current_json_str;
+    2. checks the current syntax state;
+    3. returns only token IDs whose string values maintain valid JSON.
+    """
+    valid_id: list[int] = []
+    return valid_id
