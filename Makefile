@@ -1,5 +1,8 @@
 .PHONY: install run debug clean lint lint-strict
 
+# Store Hugging Face cache in /tmp to prevent filling up home directory quota
+export HF_HOME ?= /tmp/$(USER)/huggingface
+
 PYTHON := uv run python
 SRC_DIR := src
 
@@ -7,9 +10,11 @@ install:
 	uv sync
 
 run:
+	@mkdir -p $(HF_HOME)
 	$(PYTHON) -m $(SRC_DIR)
 
 debug:
+	@mkdir -p $(HF_HOME)
 	$(PYTHON) -m pdb -c continue -m $(SRC_DIR)
 
 clean:
