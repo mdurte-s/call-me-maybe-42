@@ -6,8 +6,7 @@ from .call_me_maybe import (
     FunctionCallResultList,
     FunctionDefinitionList,
     PromptList,
-    load_and_validate_json,
-    load_vocab_mapping,
+    JSON_Decoder,
     save_json_results,
     error,
     bold_w,
@@ -21,44 +20,44 @@ def main() -> None:
     cli_args = parser.parse_args(sys.argv[1:])
 
     try:
-        print(f"\n{bold_y('Loading function definitions from:')}")
-        print(cli_args.functions_definition)
-
-        functions = load_and_validate_json(
-            cli_args.functions_definition, FunctionDefinitionList
-        )
-
-        print(f"\n{bold_y('Functions:')}")
-        for f in functions.root:
-            print(f"{bold_w('Name:')} {f.name}")
-            # print(f"{bold_w('Description:')} {f.description}")
-            # print(f"{bold_w('Parameters:')} {f.parameters}")
-            # print(f"{bold_w('Return:')} {f.returns}")
-
-        print(f"\n{bold_y('Loading prompts from:')}")
-        print(cli_args.input)
-
-        prompts = load_and_validate_json(cli_args.input, PromptList)
-
-        print(f"\n{bold_y('Prompts:')}")
-        for p in prompts.root:
-            print(f"{bold_w('Prompt:')} {p.prompt}")
-
         print(f"\n{bold_y('Loading LLM ...')}")
         model = Small_LLM_Model()
 
-        vocab = load_vocab_mapping(model)
-        print(f"\n{bold_y('Vocab:')}\n[...]")
-        # for token_id, token_str in vocab.items():
-        #     print(f"{token_id}: {token_str}")
+        print(f"\n{bold_y('Initializing Decoder ...')}")
+        decoder = JSON_Decoder(
+            functions_file_path=cli_args.functions_definition,
+            input_file_path=cli_args.input,
+            model=model
+        )
 
-        # Output placeholder for Issue #2 validation test
-        results = FunctionCallResultList([])
+        prompts = decoder.prompts
 
-        print(f"\n{bold_y('Saving output results to:')}")
-        print(cli_args.output)
+        for prompt in prompts.root:
+            prompt_token_ids: list[int] = model.encode(prompt.prompt)[0].tolist()
+            generated_token_ids: list[int] = []
+            current_json_str: str = ""
 
-        save_json_results(cli_args.output, results)
+            for _ in range(256):
+                current_input: list[int] = prompt_token_ids + generated_token_ids
+                logits: list[float] = model.get_logits_from_input_ids(current_input)
+
+                valid_token_ids: set[int] = decoder.get_valid_token_ids(current_json_str)
+
+                # for token_id in range(len(logits)):
+                #     if token_id not in valid_token_ids:
+                #         logits[token_id] = float("-inf")
+
+                # best_token_id = max(range(len(logits)), key=lambda i:logits[i])
+                # best_token_str = vocab[best_token_id]
+                # if best_token_str == "<|endoftext|>" or decoder.is_json_complete(current_json_str + best_token_str):
+                #     break
+
+        # results = FunctionCallResultList([])
+
+        # print(f"\n{bold_y('Saving output results to:')}")
+        # print(cli_args.output)
+
+        # save_json_results(cli_args.output, results)
 
     except DataIOError as err:
         print(error(f"{err}"), file=sys.stderr)

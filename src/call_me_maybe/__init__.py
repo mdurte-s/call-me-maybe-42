@@ -1,23 +1,21 @@
-from .utils import error, bold_w, bold_y
 from .parsing import create_parser
-from .decoder import load_vocab_mapping
+from .decoder import JSON_Decoder
 from .models import (
     DataIOError,
     FunctionCallResultList,
     FunctionDefinitionList,
     PromptList,
-    load_and_validate_json,
     save_json_results
     )
+from .utils import error, bold_w, bold_y
 
 __all__ = [
     "create_parser",
+    "JSON_Decoder",
     "DataIOError",
     "FunctionCallResultList",
     "FunctionDefinitionList",
     "PromptList",
-    "load_and_validate_json",
-    "load_vocab_mapping",
     "save_json_results",
     "error",
     "bold_w",

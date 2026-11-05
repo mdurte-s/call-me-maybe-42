@@ -1,11 +1,8 @@
 import json
 from pathlib import Path
-from typing import Any, Type, TypeVar
-from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError
+from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 from src.call_me_maybe.utils import error
-
-
-T = TypeVar("T", bound=BaseModel)
 
 
 class DataIOError(Exception):
@@ -112,42 +109,6 @@ class FunctionCallResultList(RootModel[list[FunctionCallResult]]):
     """Top-level list schema for function_calling_results.json."""
 
     pass
-
-
-def load_and_validate_json(file_path: str | Path, model_cls: Type[T]) -> T:
-    """Read a JSON file and validate its content against a Pydantic model."""
-    path = Path(file_path)
-
-    if not path.exists():
-        raise DataIOError(error(f"File not found: '{path}'"))
-    if not path.is_file():
-        raise DataIOError(error(f"Provided path is not a file: '{path}'"))
-
-    try:
-        with open(path, "r", encoding="utf-8") as file_handle:
-            raw_data = json.load(file_handle)
-    except PermissionError as err:
-        raise DataIOError(
-            error(f"Permission denied reading '{path}': {err}")
-        ) from err
-    except json.JSONDecodeError as err:
-        raise DataIOError(
-            error(
-                f"Malformed JSON in '{path}' at line {err.lineno}, "
-                f"col {err.colno}: {err.msg}"
-            )
-        ) from err
-    except OSError as err:
-        raise DataIOError(error(f"I/O error reading '{path}': {err}")) from err
-
-    try:
-        return model_cls.model_validate(raw_data)
-    except ValidationError as err:
-        raise DataIOError(
-            error(
-                f"Schema validation failed for '{path}':\n{err.json(indent=2)}"
-            )
-        ) from err
 
 
 def save_json_results(
