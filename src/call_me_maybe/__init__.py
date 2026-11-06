@@ -2,6 +2,7 @@ from .parsing import create_parser
 from .decoder import JSON_Decoder
 from .models import (
     DataIOError,
+    FunctionCallResult,
     FunctionCallResultList,
     FunctionDefinitionList,
     PromptList,
@@ -13,6 +14,7 @@ __all__ = [
     "create_parser",
     "JSON_Decoder",
     "DataIOError",
+    "FunctionCallResult",
     "FunctionCallResultList",
     "FunctionDefinitionList",
     "PromptList",

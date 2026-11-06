@@ -9,6 +9,9 @@ from .utils import error
 
 T = TypeVar("T", bound=BaseModel | RootModel)
 
+"""
+"""
+
 
 class JSON_State(Enum):
     # 1. Outer Structure & Name Key
@@ -44,64 +47,82 @@ class JSON_Decoder():
         input_file_path: str | Path,
         model: Small_LLM_Model
     ) -> None:
-
         self._functions = self._load_and_validate_json(
             functions_file_path, FunctionDefinitionList
         )
+        print(" • functions [OK]")
         self._prompts = self._load_and_validate_json(
             input_file_path, PromptList
         )
+        print(" • prompts [OK]")
         self._model: Small_LLM_Model = model
         self._vocab = self._load_vocab_mapping()
+        print(" • vocab [OK]")
         self._current_state: JSON_State = JSON_State.START
 
-    def get_valid_token_ids(self, current_json_str: str) -> list[int]:
-        """Classify JSON state and return allowed token IDs."""
-        clean_str = current_json_str.strip()
+        self._tokens_brace = [
+             t_id for t_id, t in self._vocab.items() if t == "{"
+        ]
+        self._tokens_colon = [
+             t_id for t_id, t in self._vocab.items() if t == ":"
+        ]
+        self._tokens_comma = [
+             t_id for t_id, t in self._vocab.items() if t == ","
+        ]
+        self._tokens_close_brace = [
+             t_id for t_id, t in self._vocab.items() if t == "}"
+        ]
+        self._tokens_comma_or_close = [
+            t_id for t_id, t in self._vocab.items()
+            if t == "," or t == "}"
+        ]
+        self._tokens_name_key = [
+            t_id for t_id, t in self._vocab.items()
+            if '"name"' == t
+        ]
+        self._tokens_params_key = [
+            t_id for t_id, t in self._vocab.items()
+            if '"parameters"' == t
+        ]
 
+    def get_valid_token_ids(self, current_json_str: str) -> list[int]:
+        """
+        1. Cleans the current_json_str;
+        2. If the clean_str is empty valid tokens are the ones that startwith('{')
+        3. If """
+        clean_str = current_json_str.strip()
         if not clean_str:
-            return self._filter_tokens_starting_with("{")
+            return self._tokens_brace
 
         self._update_current_state(clean_str)
         state = self._current_state
 
         if state is JSON_State.START:
-            return self._filter_tokens_starting_with("{")
-
+            return self._tokens_brace
         elif state is JSON_State.KEY_NAME:
-            return self._filter_tokens_matching_prefix('"name"')
-
-        elif (state is JSON_State.COLON_AFTER_NAME
-              or state is JSON_State.COLON_AFTER_PARAMS
-              or state is JSON_State.COLON_AFTER_PARAM_KEY):
-            return self._filter_tokens_starting_with(":")
-
+            return self._tokens_name_key
+        elif state in (
+            JSON_State.COLON_AFTER_NAME,
+            JSON_State.COLON_AFTER_PARAMS,
+            JSON_State.COLON_AFTER_PARAM_KEY,
+        ):
+            return self._tokens_colon
         elif state is JSON_State.FUNCTION_NAME_VAL:
             return self._filter_tokens_for_function_names()
-
         elif state is JSON_State.COMMA_AFTER_NAME_VAL:
-            return self._filter_tokens_starting_with(",")
-
+            return self._tokens_comma
         elif state is JSON_State.KEY_PARAMS:
-            return self._filter_tokens_matching_prefix('"parameters"')
-
+            return self._tokens_params_key
         elif state is JSON_State.START_PARAMS_OBJ:
-            return self._filter_tokens_starting_with("{")
-
+            return self._tokens_brace
+        elif state is JSON_State.COMMA_OR_CLOSE_PARAMS:
+            return self._tokens_comma_or_close
+        elif state is JSON_State.CLOSE_OUTER_OBJ:
+            return self._tokens_close_brace
         elif state is JSON_State.PARAM_KEY:
             return self._filter_tokens_for_active_param_keys(clean_str)
-
         elif state is JSON_State.PARAM_VAL:
             return self._filter_tokens_for_param_value(clean_str)
-
-        elif state is JSON_State.COMMA_OR_CLOSE_PARAMS:
-            return self._filter_tokens_matching_any([",", "}"])
-
-        elif state is JSON_State.CLOSE_OUTER_OBJ:
-            return self._filter_tokens_starting_with("}")
-
-        elif state is JSON_State.COMPLETE:
-            return []
 
         return []
 
@@ -125,34 +146,46 @@ class JSON_Decoder():
 
         if not s:
             self._current_state = JSON_State.START
+            return
 
-        elif s == "{":
+        if s == "{":
             self._current_state = JSON_State.KEY_NAME
+            return
 
-        elif s.startswith('{"name"') and not s.startswith('{"name":'):
-            self._current_state = JSON_State.COLON_AFTER_NAME
+        # if s == '{"name"':
+        #     self._current_state = JSON_State.COLON_AFTER_NAME
+        #     return
 
-        elif (s.startswith('{"name":')
-              and (not any(s.endswith(f'"{fn.name}"')
-                           for fn in self._functions.root))):
+        if s == '{"name":' or s.endswith('{"name": "'):
             self._current_state = JSON_State.FUNCTION_NAME_VAL
+            return
 
-        elif (any(s.endswith(f'"{fn.name}"')
-                  for fn in self._functions.root)
-              and not s.endswith(',')):
+        valid_fn_names = [f'"{fn.name}"' for fn in self._functions.root]
+        if any(
+            s.endswith(fn_name) for fn_name in valid_fn_names
+                ) and not s.endswith(','):
             self._current_state = JSON_State.COMMA_AFTER_NAME_VAL
+            return
 
-        elif s.endswith(',') and '"parameters"' not in s:
+        if s.endswith(','):
             self._current_state = JSON_State.KEY_PARAMS
+            return
 
-        elif s.endswith('"parameters"'):
+        if s.endswith('"parameters"'):
             self._current_state = JSON_State.COLON_AFTER_PARAMS
+            return
 
-        elif s.endswith('"parameters":'):
+        if s.endswith('"parameters":'):
             self._current_state = JSON_State.START_PARAMS_OBJ
+            return
 
-        elif self.is_json_complete(s):
+        if s.endswith('"parameters":{') or s.endswith('"parameters": {'):
+            self._current_state = JSON_State.PARAM_KEY
+            return
+
+        if self.is_json_complete(s):
             self._current_state = JSON_State.COMPLETE
+            return
 
     def _filter_tokens_starting_with(self, prefix: str) -> list[int]:
         """Return token IDs whose string starts with prefix."""
@@ -168,7 +201,12 @@ class JSON_Decoder():
         return [
             token_id
             for token_id, token_str in self._vocab.items()
-            if target.startswith(token_str) or token_str.startswith(target)
+            if (
+                token_str
+                and (target.startswith(token_str)
+                     or token_str.startswith(target)
+                     )
+)
         ]
 
     def _filter_tokens_matching_any(self, targets: list[str]) -> list[int]:
@@ -258,6 +296,9 @@ class JSON_Decoder():
                 error(f"Schema validation failed for '{path}':"
                       f"\n{err.json(indent=2)}")
             ) from err
+
+    def reset_state(self) -> None:
+        self._current_state = JSON_State.START
 
     @property
     def functions(self) -> FunctionDefinitionList:

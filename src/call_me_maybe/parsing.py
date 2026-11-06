@@ -14,7 +14,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input",
         type=str,
-        default="data/input/function_calling_tests.json",
+        default="data/input/one_prompt.json",
         help="Path to the input prompts JSON file.",
     )
     parser.add_argument(
