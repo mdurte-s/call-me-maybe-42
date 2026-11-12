@@ -1,0 +1,29 @@
+[
+  {
+    "prompt": "Turn on the lights"
+  },
+  {
+    "prompt": "Switch the lights off"
+  },
+  {
+    "prompt": "Send an urgent email to alice@example.com"
+  },
+  {
+    "prompt": "Send a normal non-urgent email to bob@example.com"
+  },
+  {
+    "prompt": "Set an alarm for 7 with repeat enabled and vibration disabled"
+  },
+  {
+    "prompt": "Configure an alarm at 8.5 that does not repeat and does not vibrate"
+  },
+  {
+    "prompt": "Create a regular non-admin account for john_doe with a balance of 150.75"
+  },
+  {
+    "prompt": "Register an admin user named Alice Smith with 0 initial balance"
+  },
+  {
+    "prompt": "Create a non-admin user account for guest_99 starting with a balance of -25.5"
+  }
+]

@@ -67,5 +67,68 @@
     "returns": {
       "type": "string"
     }
+  },
+  {
+    "name": "fn_toggle_lights",
+    "description": "Turn the room lights on or off.",
+    "parameters": {
+      "state": {
+        "type": "boolean"
+      }
+    },
+    "returns": {
+      "type": "string"
+    }
+  },
+  {
+    "name": "fn_send_email",
+    "description": "Send an email to a recipient with an optional urgent flag.",
+    "parameters": {
+      "recipient": {
+        "type": "string"
+      },
+      "urgent": {
+        "type": "boolean"
+      }
+    },
+    "returns": {
+      "type": "boolean"
+    }
+  },
+  {
+    "name": "fn_configure_alarm",
+    "description": "Set an alarm at a specific hour and choose whether it repeats and vibrates.",
+    "parameters": {
+      "hour": {
+        "type": "number"
+      },
+      "repeat": {
+        "type": "boolean"
+      },
+      "vibrate": {
+        "type": "boolean"
+      }
+    },
+    "returns": {
+      "type": "string"
+    }
+  },
+  {
+    "name": "fn_create_user_account",
+    "description": "Create a new user account with a username, initial credit balance, and admin status.",
+    "parameters": {
+      "username": {
+        "type": "string"
+      },
+      "balance": {
+        "type": "number"
+      },
+      "is_admin": {
+        "type": "boolean"
+      }
+    },
+    "returns": {
+      "type": "string"
+    }
   }
 ]
