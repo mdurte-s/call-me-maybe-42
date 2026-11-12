@@ -4,8 +4,9 @@ from .models import (
     DataIOError,
     FunctionCallResult,
     FunctionCallResultList,
+    FunctionDefinition,
     FunctionDefinitionList,
-    PromptList,
+    PromptItem,
     save_json_results
     )
 from .utils import error, bold_w, bold_y
@@ -16,8 +17,9 @@ __all__ = [
     "DataIOError",
     "FunctionCallResult",
     "FunctionCallResultList",
+    "FunctionDefinition",
     "FunctionDefinitionList",
-    "PromptList",
+    "PromptItem",
     "save_json_results",
     "error",
     "bold_w",

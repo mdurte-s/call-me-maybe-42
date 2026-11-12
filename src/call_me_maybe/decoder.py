@@ -1,6 +1,6 @@
+import re
 import json
 from pathlib import Path
-from enum import Enum, auto
 from typing import Type, TypeVar
 from pydantic import BaseModel, RootModel, ValidationError
 from llm_sdk.llm_sdk import Small_LLM_Model
@@ -9,247 +9,180 @@ from .utils import error
 
 T = TypeVar("T", bound=BaseModel | RootModel)
 
-"""
-"""
+# Matches a valid in-progress number (allows "-", "40", "40.", "40.5", "-0.25")
+_NUM_PREFIX_RE = re.compile(r"^-?(?:(?:0|[1-9]\d*)(?:\.\d*)?)?$")
+# Matches a complete, valid JSON number (must end with a digit, not "-" or ".")
+_NUM_COMPLETE_RE = re.compile(r"^-?(?:0|[1-9]\d*)(?:\.\d+)?$")
+# Matches a valid in-progress integer
+_INT_PREFIX_RE = re.compile(r"^-?(?:0|[1-9]\d*)?$")
+_INT_COMPLETE_RE = re.compile(r"^-?(?:0|[1-9]\d*)$")
 
 
-class JSON_State(Enum):
-    # 1. Outer Structure & Name Key
-    START = auto()
-    KEY_NAME = auto()
-    COLON_AFTER_NAME = auto()
-
-    # 2. Function Selection
-    FUNCTION_NAME_VAL = auto()
-    COMMA_AFTER_NAME_VAL = auto()
-
-    # 3. Parameters Key & Opening
-    KEY_PARAMS = auto()
-    COLON_AFTER_PARAMS = auto()
-    START_PARAMS_OBJ = auto()
-
-    # 4. Parameters Key-Value Loop
-    PARAM_KEY = auto()
-    COLON_AFTER_PARAM_KEY = auto()
-    PARAM_VAL = auto()
-    COMMA_OR_CLOSE_PARAMS = auto()
-
-    # 5. Final Closure
-    CLOSE_OUTER_OBJ = auto()
-    COMPLETE = auto()
-
-
-class JSON_Decoder():
+class JSON_Decoder:
 
     def __init__(
         self,
         functions_file_path: str | Path,
         input_file_path: str | Path,
-        model: Small_LLM_Model
+        model: Small_LLM_Model,
     ) -> None:
         self._functions = self._load_and_validate_json(
             functions_file_path, FunctionDefinitionList
         )
-        print(" • functions [OK]")
+        print(" • get functions [OK]")
         self._prompts = self._load_and_validate_json(
             input_file_path, PromptList
         )
-        print(" • prompts [OK]")
-        self._model: Small_LLM_Model = model
+        print(" • get inputs [OK]")
+        self._model = model
         self._vocab = self._load_vocab_mapping()
-        print(" • vocab [OK]")
-        self._current_state: JSON_State = JSON_State.START
+        print(" • get vocab [OK]")
 
-        self._tokens_brace = [
-             t_id for t_id, t in self._vocab.items() if t == "{"
-        ]
-        self._tokens_colon = [
-             t_id for t_id, t in self._vocab.items() if t == ":"
-        ]
-        self._tokens_comma = [
-             t_id for t_id, t in self._vocab.items() if t == ","
-        ]
-        self._tokens_close_brace = [
-             t_id for t_id, t in self._vocab.items() if t == "}"
-        ]
-        self._tokens_comma_or_close = [
-            t_id for t_id, t in self._vocab.items()
-            if t == "," or t == "}"
-        ]
-        self._tokens_name_key = [
-            t_id for t_id, t in self._vocab.items()
-            if '"name"' == t
-        ]
-        self._tokens_params_key = [
-            t_id for t_id, t in self._vocab.items()
-            if '"parameters"' == t
-        ]
+        self._valid_function_names = [fn.name for fn in self._functions.root]
+        self._stop_tokens: set[str] = {",", "}", " ", "Ġ", "Ċ"}
+        self._str_valid_tokens: list[int] = self._build_string_valid_tokens()
 
-    def get_valid_token_ids(self, current_json_str: str) -> list[int]:
+    def get_function_name_valid_tokens(
+        self,
+        current_fn_prefix: str
+    ) -> list[int]:
+        """Filter tokens that advance towards a valid registered function name.
         """
-        1. Cleans the current_json_str;
-        2. If the clean_str is empty valid tokens are the ones that startwith('{')
-        3. If """
-        clean_str = current_json_str.strip()
-        if not clean_str:
-            return self._tokens_brace
-
-        self._update_current_state(clean_str)
-        state = self._current_state
-
-        if state is JSON_State.START:
-            return self._tokens_brace
-        elif state is JSON_State.KEY_NAME:
-            return self._tokens_name_key
-        elif state in (
-            JSON_State.COLON_AFTER_NAME,
-            JSON_State.COLON_AFTER_PARAMS,
-            JSON_State.COLON_AFTER_PARAM_KEY,
-        ):
-            return self._tokens_colon
-        elif state is JSON_State.FUNCTION_NAME_VAL:
-            return self._filter_tokens_for_function_names()
-        elif state is JSON_State.COMMA_AFTER_NAME_VAL:
-            return self._tokens_comma
-        elif state is JSON_State.KEY_PARAMS:
-            return self._tokens_params_key
-        elif state is JSON_State.START_PARAMS_OBJ:
-            return self._tokens_brace
-        elif state is JSON_State.COMMA_OR_CLOSE_PARAMS:
-            return self._tokens_comma_or_close
-        elif state is JSON_State.CLOSE_OUTER_OBJ:
-            return self._tokens_close_brace
-        elif state is JSON_State.PARAM_KEY:
-            return self._filter_tokens_for_active_param_keys(clean_str)
-        elif state is JSON_State.PARAM_VAL:
-            return self._filter_tokens_for_param_value(clean_str)
-
-        return []
-
-    def is_json_complete(self, candidate_str: str) -> bool:
-        """Check whether candidate_str is a valid complete JSON object."""
-        clean_str = candidate_str.strip()
-
-        if not (clean_str.startswith("{") and clean_str.endswith("}")):
-            return False
-
-        try:
-            parsed = json.loads(clean_str)
-            return isinstance(parsed, dict)
-        except json.JSONDecodeError:
-            return False
-
-    def _update_current_state(self, current_json_str: str) -> None:
-        """Determine structural transition state based on accumulated output.
-        """
-        s = current_json_str.strip()
-
-        if not s:
-            self._current_state = JSON_State.START
-            return
-
-        if s == "{":
-            self._current_state = JSON_State.KEY_NAME
-            return
-
-        # if s == '{"name"':
-        #     self._current_state = JSON_State.COLON_AFTER_NAME
-        #     return
-
-        if s == '{"name":' or s.endswith('{"name": "'):
-            self._current_state = JSON_State.FUNCTION_NAME_VAL
-            return
-
-        valid_fn_names = [f'"{fn.name}"' for fn in self._functions.root]
-        if any(
-            s.endswith(fn_name) for fn_name in valid_fn_names
-                ) and not s.endswith(','):
-            self._current_state = JSON_State.COMMA_AFTER_NAME_VAL
-            return
-
-        if s.endswith(','):
-            self._current_state = JSON_State.KEY_PARAMS
-            return
-
-        if s.endswith('"parameters"'):
-            self._current_state = JSON_State.COLON_AFTER_PARAMS
-            return
-
-        if s.endswith('"parameters":'):
-            self._current_state = JSON_State.START_PARAMS_OBJ
-            return
-
-        if s.endswith('"parameters":{') or s.endswith('"parameters": {'):
-            self._current_state = JSON_State.PARAM_KEY
-            return
-
-        if self.is_json_complete(s):
-            self._current_state = JSON_State.COMPLETE
-            return
-
-    def _filter_tokens_starting_with(self, prefix: str) -> list[int]:
-        """Return token IDs whose string starts with prefix."""
-        return [
-            token_id
-            for token_id, token_str in self._vocab.items()
-            if token_str.startswith(prefix)
-        ]
-
-    def _filter_tokens_matching_prefix(self, target: str) -> list[int]:
-        """Return token IDs that are prefixes of target or start with target.
-        """
-        return [
-            token_id
-            for token_id, token_str in self._vocab.items()
-            if (
-                token_str
-                and (target.startswith(token_str)
-                     or token_str.startswith(target)
-                     )
-)
-        ]
-
-    def _filter_tokens_matching_any(self, targets: list[str]) -> list[int]:
-        """Return token IDs that start with any string in targets."""
-        return [
-            token_id
-            for token_id, token_str in self._vocab.items()
-            if any(token_str.startswith(t) for t in targets)
-        ]
-
-    def _filter_tokens_for_function_names(self) -> list[int]:
-        """Filter vocabulary for registered function name strings."""
-        valid_names = [f'"{fn.name}"' for fn in self._functions.root]
-        valid_ids = []
+        valid_ids: list[int] = []
         for token_id, token_str in self._vocab.items():
-            if any(
-                name.startswith(token_str) or token_str.startswith(name)
-                for name in valid_names
-            ):
+            if not token_str:
+                continue
+
+            candidate = current_fn_prefix + token_str  # t
+            if any(name.startswith(candidate)
+                   for name in self._valid_function_names):
                 valid_ids.append(token_id)
+
         return valid_ids
 
-    def _filter_tokens_for_active_param_keys(
+    def get_number_valid_tokens(
         self,
-        current_str: str
+        current_num_prefix: str,
+        is_integer: bool = False
     ) -> list[int]:
-        """Filter vocabulary for active function parameter keys."""
-        return [t_id for t_id, t_str in self._vocab.items()
-                if t_str.startswith('"')]
+        """Filter tokens that advance towards a valid number.
+        """
+        prefix_re = _INT_PREFIX_RE if is_integer else _NUM_PREFIX_RE
+        can_stop = self._is_complete_number(current_num_prefix, is_integer)
+        valid_ids: list[int] = []
+        for token_id, token_str in self._vocab.items():
+            if not token_str:
+                continue
 
-    def _filter_tokens_for_param_value(self, current_str: str) -> list[int]:
-        """Filter vocabulary for expected parameter primitive value."""
-        return list(self._vocab.keys())
+            candidate = current_num_prefix + token_str
+            if prefix_re.match(candidate):
+                valid_ids.append(token_id)
+                continue
+
+            if can_stop and token_str in self._stop_tokens:
+                valid_ids.append(token_id)
+                continue  # review this!
+
+        return valid_ids
+
+    def get_string_valid_tokens(self) -> list[int]:
+        """Return precomputed valid token IDs for string values."""
+        return self._str_valid_tokens
+
+    def get_boolean_valid_tokens(
+        self,
+        current_bool_prefix: str
+    ) -> list[int]:
+        """Filter tokens that advance towards a valid registered function name.
+        """
+        valid_ids = []
+        for token_id, token_str in self._vocab.items():
+            if not token_str:
+                continue
+
+            candidate = current_bool_prefix + token_str
+            if ("true".startswith(candidate)
+                    or "false".startswith(candidate)):
+                valid_ids.append(token_id)
+
+        return valid_ids
+
+    def get_param_key_valid_tokens(
+        self,
+        active_func_name: str,
+        existing_keys: list[str]
+    ) -> list[int]:
+        """Filter tokens that match remaining parameters for the
+        selected function.
+        """
+        func_def = next(
+            (fn for fn in self._functions.root
+             if fn.name == active_func_name),
+            None
+            )
+        if not func_def:
+            return list(self._vocab.keys())
+
+        remaining_params = [p for p in func_def.parameters.keys()
+                            if p not in existing_keys]
+        valid_ids = []
+        for token_id, token_str in self._vocab.items():
+            t = token_str.strip('"').strip()
+            if any(p.startswith(t) or t.startswith(p)
+                   for p in remaining_params):
+                valid_ids.append(token_id)
+
+        return valid_ids if valid_ids else list(self._vocab.keys())
+
+    def _is_complete_number(
+        self,
+        num_str: str,
+        is_integer: bool = False
+    ) -> bool:
+        """Return True if num_str is a finished valid JSON number.
+        """
+        pattern = _INT_COMPLETE_RE if is_integer else _NUM_COMPLETE_RE
+        return bool(pattern.match(num_str))
+
+    def _build_string_valid_tokens(self) -> list[int]:
+        """Filter tokens that advance towards a valid registered function name.
+        """
+        valid_ids = []
+        for token_id, token_str in self._vocab.items():
+            if not token_str:
+                continue
+
+            # block LLM special tokens
+            if token_str.startswith("<|") and token_str.endswith("|>"):
+                continue
+
+            # block raw control characters / newlines (Ċ is BPE newline)
+            if "Ċ" in token_str or any(ord(ch) < 32 for ch in token_str):
+                continue
+
+            # block backslashes so the model can't create broken escape
+            # sequences
+            if "\\" in token_str:
+                continue
+
+            if '"' in token_str:
+                if token_str.count('"') == 1:
+                    _, after_quote = token_str.split('"', 1)
+                    if all(c in self._stop_tokens for c in after_quote):
+                        valid_ids.append(token_id)
+                continue
+
+            valid_ids.append(token_id)
+
+        return valid_ids
 
     def _load_vocab_mapping(self) -> dict[int, str]:
-        """Retrieve vocabulary mapping from SDK."""
         vocab_path_str = self._model.get_path_to_vocab_file()
         vocab_file = Path(vocab_path_str)
-
         if not vocab_file.exists():
             raise FileNotFoundError(
                 f"Vocabulary file not found at: {vocab_file}"
-            )
+                )
 
         with open(vocab_file, "r", encoding="utf-8") as f:
             raw_vocab: dict[str, int] = json.load(f)
@@ -258,13 +191,9 @@ class JSON_Decoder():
                 for token_str, token_id in raw_vocab.items()}
 
     def _load_and_validate_json(
-        self,
-        file_path: str | Path,
-        model_cls: Type[T]
+        self, file_path: str | Path, model_cls: Type[T]
     ) -> T:
-        """Read a JSON file and validate against Pydantic model."""
         path = Path(file_path)
-
         if not path.exists():
             raise DataIOError(error(f"File not found: '{path}'"))
         if not path.is_file():
@@ -273,36 +202,27 @@ class JSON_Decoder():
         try:
             with open(path, "r", encoding="utf-8") as file_handle:
                 raw_data = json.load(file_handle)
-        except PermissionError as err:
-            raise DataIOError(
-                error(f"Permission denied reading '{path}': {err}")
-                ) from err
-        except json.JSONDecodeError as err:
-            raise DataIOError(
-                error(
-                    f"Malformed JSON in '{path}' at"
-                    f"line {err.lineno}, col {err.colno}: {err.msg}"
-                    )
-            ) from err
-        except OSError as err:
-            raise DataIOError(
-                error(f"I/O error reading '{path}': {err}")
-                ) from err
-
-        try:
             return model_cls.model_validate(raw_data)
         except ValidationError as err:
             raise DataIOError(
-                error(f"Schema validation failed for '{path}':"
-                      f"\n{err.json(indent=2)}")
+                error(
+                    f"Schema validation failed for '{path}':"
+                    f"\n{err.json(indent=2)}")
             ) from err
+        except Exception as err:
+            raise DataIOError(error(f"Error reading '{path}': {err}")) from err
 
-    def reset_state(self) -> None:
-        self._current_state = JSON_State.START
+    @property
+    def stop_tokens(self) -> set[str]:
+        return self._stop_tokens
 
     @property
     def functions(self) -> FunctionDefinitionList:
         return self._functions
+
+    @property
+    def valid_function_names(self) -> list[str]:
+        return self._valid_function_names
 
     @property
     def prompts(self) -> PromptList:
