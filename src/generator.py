@@ -125,6 +125,10 @@ def generate_function_call(
 
             if value_str.endswith("."):
                 value_str += "0"
+                generated_tokens.extend(model.encode("0")[0].tolist())
+            elif not is_integer and "." not in value_str:
+                value_str += ".0"
+                generated_tokens.extend(model.encode(".0")[0].tolist())
 
         elif param_type == "string":
             valid_tokens = set(decoder.get_string_valid_tokens())
