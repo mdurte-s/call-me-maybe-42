@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, RootModel
-from src.utils import error
+from .utils import error
 
 
 class DataIOError(Exception):

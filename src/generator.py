@@ -123,6 +123,8 @@ def generate_function_call(
                 value_str += best_token_str
                 generated_tokens.append(best_token_id)
 
+            if not value_str or value_str == "-":
+                value_str = "0"
             if value_str.endswith("."):
                 value_str += "0"
                 generated_tokens.extend(model.encode("0")[0].tolist())

@@ -20,7 +20,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=str,
-        default="data/output/function_calling_results.json",
+        default="data/output/function_calls.json",
         help="Path where the generated output JSON should be saved.",
     )
     return parser

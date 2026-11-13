@@ -61,7 +61,8 @@ def main() -> None:
         print(error(f"{err}"), file=sys.stderr)
         sys.exit(1)
     except (json.JSONDecodeError, KeyError):
-        print(error("Failed to parse model output."))
+        print(error("Failed to parse model output."), file=sys.stderr)
+        sys.exit(1)
     except Exception as err:
         print(error(f"unexpected {err}"), file=sys.stderr)
         sys.exit(1)

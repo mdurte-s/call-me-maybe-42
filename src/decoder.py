@@ -107,33 +107,6 @@ class JSON_Decoder:
 
         return valid_ids
 
-    def get_param_key_valid_tokens(
-        self,
-        active_func_name: str,
-        existing_keys: list[str]
-    ) -> list[int]:
-        """Filter tokens that match remaining parameters for the
-        selected function.
-        """
-        func_def = next(
-            (fn for fn in self._functions.root
-             if fn.name == active_func_name),
-            None
-            )
-        if not func_def:
-            return list(self._vocab.keys())
-
-        remaining_params = [p for p in func_def.parameters.keys()
-                            if p not in existing_keys]
-        valid_ids = []
-        for token_id, token_str in self._vocab.items():
-            t = token_str.strip('"').strip()
-            if any(p.startswith(t) or t.startswith(p)
-                   for p in remaining_params):
-                valid_ids.append(token_id)
-
-        return valid_ids if valid_ids else list(self._vocab.keys())
-
     def _is_complete_number(
         self,
         num_str: str,
