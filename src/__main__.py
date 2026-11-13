@@ -1,39 +1,16 @@
-import argparse
 import sys
-from src.models import (
-    DataIOError,
+import json
+from llm_sdk.llm_sdk import Small_LLM_Model
+from .parsing import create_parser
+from .utils import error, bold_y
+from .decoder import JSON_Decoder
+from .generator import generate_function_call
+from .models import (
+    FunctionCallResult,
     FunctionCallResultList,
-    FunctionDefinitionList,
-    PromptList,
-    load_and_validate_json,
-    save_json_results,
+    DataIOError,
+    save_json_results
 )
-from src.utils import error, bold_y, bold_w
-
-
-def create_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="LLM Constrained Decoding Function Calling CLI Tool"
-    )
-    parser.add_argument(
-        "--functions_definition",
-        type=str,
-        default="data/input/functions_definition.json",
-        help="Path to the function definitions JSON file.",
-    )
-    parser.add_argument(
-        "--input",
-        type=str,
-        default="data/input/function_calling_tests.json",
-        help="Path to the input prompts JSON file.",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default="data/output/function_calling_results.json",
-        help="Path where the generated output JSON should be saved.",
-    )
-    return parser
 
 
 def main() -> None:
@@ -42,40 +19,49 @@ def main() -> None:
     cli_args = parser.parse_args(sys.argv[1:])
 
     try:
-        print(
-            f"{bold_y("\nLoading function definitions from:\n")}"
-            f"{cli_args.functions_definition}"
-        )
-        functions = load_and_validate_json(
-            cli_args.functions_definition, FunctionDefinitionList
-        )
-        print(f"{bold_y("\nFunctions:")}")
-        for f in functions.root:
-            print(f"\n{bold_w("Name:")} {f.name}")
-            print(f"{bold_w("Description:")} {f.description}")
-            print(f"{bold_w("Parameters:")} {f.parameters}")
-            print(f"{bold_w("Return:")} {f.returns}")
+        print(f"\n{bold_y('Loading LLM ...')}")
+        model = Small_LLM_Model()
 
-        print(
-            f"{bold_y("\nLoading prompts from:\n")}"
-            f"{cli_args.input}"
+        print(f"\n{bold_y('Initializing Decoder ...')}")
+        decoder = JSON_Decoder(
+            functions_file_path=cli_args.functions_definition,
+            input_file_path=cli_args.input,
+            model=model
         )
-        prompts = load_and_validate_json(cli_args.input, PromptList)
-        print(f"{bold_y("\nFunctions:")}")
-        for p in prompts.root:
-            print(f"{bold_w("Prompt:")} {p.prompt}")
+        functions = [f for f in decoder.functions.root]
+        function_models = [f.model_dump() for f in decoder.functions.root]
+        prompts = decoder.prompts.root
+        vocab = decoder.vocab
 
-        # Output placeholder for Issue #2 validation test
-        results = FunctionCallResultList([])
+        results: list[FunctionCallResult] = []
 
-        print(
-            f"{bold_y("\nSaving output results to:\n")}"
-            f"{cli_args.output}"
-        )
-        save_json_results(cli_args.output, results)
+        print(f"\n{bold_y('Analysing Prompts ...')}")
+        for i, prompt in enumerate(prompts):
+            print(f' • prompt[{i}]: "{prompt.prompt}"', end=" ")
+            results.append(
+                generate_function_call(
+                    model=model,
+                    decoder=decoder,
+                    functions=functions,
+                    function_models=function_models,
+                    prompt=prompt,
+                    vocab=vocab
+                )
+            )
+            print("\033[0;32m[OK]\033[0m\n")
+
+        results_wrapped = FunctionCallResultList(results)
+
+        print(f"\n{bold_y('Saving output results to:')}")
+        print(cli_args.output)
+
+        save_json_results(cli_args.output, results_wrapped)
 
     except DataIOError as err:
         print(error(f"{err}"), file=sys.stderr)
+        sys.exit(1)
+    except (json.JSONDecodeError, KeyError):
+        print(error("Failed to parse model output."), file=sys.stderr)
         sys.exit(1)
     except Exception as err:
         print(error(f"unexpected {err}"), file=sys.stderr)

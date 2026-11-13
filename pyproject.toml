@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "call-me-maybe"
 version = "0.1.0"
 description = "42 school project Call Me Maybe"
-# readme = "README.md"
 requires-python = ">=3.10"
 authors = [
     { name = "mdurte-s", email = "mdurte-s@student.42.pt" }
@@ -14,7 +13,18 @@ authors = [
 dependencies = [
     "numpy>=2.0.0",
     "pydantic>=2.0.0",
+    "torch>=2.0.0",
+    "transformers>=4.40.0",
+    "huggingface-hub>=0.20.0",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
 
 [dependency-groups]
 dev = [
