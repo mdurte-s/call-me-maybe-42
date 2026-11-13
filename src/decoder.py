@@ -29,14 +29,14 @@ class JSON_Decoder:
         self._functions = self._load_and_validate_json(
             functions_file_path, FunctionDefinitionList
         )
-        print(" • get functions [OK]")
+        print(" • get functions: \033[0;32m[OK]\033[0m")
         self._prompts = self._load_and_validate_json(
             input_file_path, PromptList
         )
-        print(" • get inputs [OK]")
+        print(" • get inputs: \033[0;32m[OK]\033[0m")
         self._model = model
         self._vocab = self._load_vocab_mapping()
-        print(" • get vocab [OK]")
+        print(" • get vocab: \033[0;32m[OK]\033[0m")
 
         self._valid_function_names = [fn.name for fn in self._functions.root]
         self._stop_tokens: set[str] = {",", "}", " ", "Ġ", "Ċ"}
