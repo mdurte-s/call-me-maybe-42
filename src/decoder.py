@@ -2,12 +2,12 @@ import re
 import json
 from pathlib import Path
 from typing import Type, TypeVar
-from pydantic import BaseModel, RootModel, ValidationError
+from pydantic import BaseModel, ValidationError
 from llm_sdk.llm_sdk import Small_LLM_Model
 from .models import DataIOError, FunctionDefinitionList, PromptList
 from .utils import error
 
-T = TypeVar("T", bound=BaseModel | RootModel)
+T = TypeVar("T", bound=BaseModel)
 
 # Matches a valid in-progress number (allows "-", "40", "40.", "40.5", "-0.25")
 _NUM_PREFIX_RE = re.compile(r"^-?(?:(?:0|[1-9]\d*)(?:\.\d*)?)?$")
