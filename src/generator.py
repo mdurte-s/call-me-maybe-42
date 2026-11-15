@@ -13,6 +13,23 @@ def format_prompt(
     user_prompt: str,
     functions_data: list[dict[str, Any]]
 ) -> str:
+    """Build a chat-formatted prompt string for the LLM.
+
+    Wraps the user request and the available function definitions into the
+    ChatML template expected by Qwen-style models.  The resulting string
+    includes a system message listing the functions as JSON, followed by
+    the user turn and the opening of the assistant turn to prime constrained
+    generation.
+
+    Args:
+        user_prompt (str): The raw natural-language request from the user.
+        functions_data (list[dict[str, Any]]): Serialised function definitions
+            (as returned by ``model_dump()`` on a ``FunctionDefinition`` list).
+
+    Returns:
+        str: A fully formatted prompt string ready to be tokenised and fed
+            to the model.
+    """
     functions_str = json.dumps(functions_data, indent=2)
     return (
         "<|im_start|>system\n"
@@ -29,6 +46,23 @@ def get_best_token(
     logits: list[float],
     valid_tokens: set[int]
 ) -> tuple[int, str]:
+    """Select the highest-scoring token from the set of allowed tokens.
+
+    Masks out every token that is not in ``valid_tokens`` by setting its
+    logit to negative infinity, then returns the token with the maximum
+    remaining logit (greedy decoding with vocabulary constraint).
+
+    Args:
+        vocab (dict[int, str]): Full token-ID → token-string vocabulary.
+        logits (list[float]): Raw logit scores for each token in the
+            vocabulary, as returned by the model.
+        valid_tokens (set[int]): Set of token IDs that are currently
+            permissible according to the constrained decoding state.
+
+    Returns:
+        tuple[int, str]: A pair of ``(token_id, token_str)`` for the best
+            allowed token.
+    """
 
     for token_id in range(len(logits)):
         if token_id not in valid_tokens:
@@ -49,6 +83,39 @@ def generate_function_call(
     prompt: PromptItem,
     vocab: dict[int, str]
 ) -> FunctionCallResult:
+    """Generate a structured function-call JSON object for a single prompt.
+
+    Implements the full constrained-decoding pipeline:
+
+    1. Format the prompt into a ChatML string and tokenise it.
+    2. Decode the function name token-by-token, allowing only tokens that
+       keep the prefix consistent with at least one registered function name.
+    3. For each parameter of the matched function, decode the value
+       token-by-token using the type-specific constraint
+       (number / integer / string / boolean).
+    4. Assemble the tokens into a JSON string, parse it, and return a
+       validated ``FunctionCallResult``.
+
+    Args:
+        model (Small_LLM_Model): The language model used for logit generation
+            and tokenisation.
+        decoder (JSON_Decoder): Decoder instance providing per-type valid
+            token sets and vocabulary access.
+        functions (list[FunctionDefinition]): Full list of registered function
+            definition objects.
+        function_models (list[dict[str, Any]]): Serialised representations of
+            ``functions`` (used for prompt formatting).
+        prompt (PromptItem): The natural-language prompt to process.
+        vocab (dict[int, str]): Token-ID → token-string mapping.
+
+    Returns:
+        FunctionCallResult: A validated result containing the original prompt,
+            the matched function name, and the extracted parameter values.
+
+    Raises:
+        RuntimeError: If constrained decoding fails to match any registered
+            function name within the allowed number of steps.
+    """
 
     formated_prompt = format_prompt(prompt.prompt, function_models)
     prompt_tokens: list[int] = model.encode(formated_prompt)[0].tolist()

@@ -115,7 +115,22 @@ def save_json_results(
         file_path: str | Path,
         data: FunctionCallResultList
         ) -> None:
-    """Save the validated output list cleanly to disk."""
+    """Serialise and write a ``FunctionCallResultList`` to a JSON file.
+
+    Parent directories are created automatically if they do not exist.
+    The output is pretty-printed with two-space indentation and terminated
+    by a trailing newline.
+
+    Args:
+        file_path (str | Path): Destination file path.  The parent directory
+            will be created with ``mkdir -p`` semantics if absent.
+        data (FunctionCallResultList): Validated list of function-call results
+            to serialise.
+
+    Raises:
+        DataIOError: If the file cannot be written due to a permission error
+            or any other OS-level I/O failure.
+    """
     path = Path(file_path)
 
     try:

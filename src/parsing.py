@@ -2,6 +2,21 @@ import argparse
 
 
 def create_parser() -> argparse.ArgumentParser:
+    """Create and return the CLI argument parser for the application.
+
+    Defines three optional arguments:
+
+    - ``--functions_definition``: path to the JSON file describing available
+      functions (default: ``data/input/functions_definition.json``).
+    - ``--input``: path to the JSON file containing natural-language prompts
+      (default: ``data/input/function_calling_tests.json``).
+    - ``--output``: path where the generated function-call results will be
+      written (default: ``data/output/function_calls.json``).
+
+    Returns:
+        argparse.ArgumentParser: Configured parser ready to call
+            ``parse_args()`` on.
+    """
     parser = argparse.ArgumentParser(
         description="LLM Constrained Decoding Function Calling CLI Tool"
     )

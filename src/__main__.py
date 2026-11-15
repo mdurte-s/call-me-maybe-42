@@ -14,7 +14,23 @@ from .models import (
 
 
 def main() -> None:
-    """Orchestrate the execution pipeline."""
+    """Orchestrate the end-to-end function-calling pipeline.
+
+    Entry point for ``python -m src``.  Performs the following steps in order:
+
+    1. Parse CLI arguments (``--functions_definition``, ``--input``,
+       ``--output``).
+    2. Load the ``Small_LLM_Model`` from ``llm_sdk``.
+    3. Initialise a ``JSON_Decoder`` with the function definitions and input
+       prompts, which also loads the model vocabulary.
+    4. Iterate over every prompt and produce a ``FunctionCallResult`` via
+       constrained decoding (``generate_function_call``).
+    5. Wrap the results in a ``FunctionCallResultList`` and persist them to
+       the output JSON file via ``save_json_results``.
+
+    All exceptions are caught and reported to ``stderr`` with a coloured
+    ``[Error]`` prefix; the process exits with code 1 on any failure.
+    """
     parser = create_parser()
     cli_args = parser.parse_args(sys.argv[1:])
 

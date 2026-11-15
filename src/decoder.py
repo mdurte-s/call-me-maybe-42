@@ -19,6 +19,23 @@ _INT_COMPLETE_RE = re.compile(r"^-?(?:0|[1-9]\d*)$")
 
 
 class JSON_Decoder:
+    """Constrained JSON decoder for LLM-based function calling.
+
+    Loads a set of function definitions and input prompts, then exposes
+    methods that return valid token IDs for each field of the expected JSON
+    output (function name, parameter values by type).  Those valid-token
+    masks are used during greedy decoding to guarantee that the model always
+    produces a syntactically correct function-call JSON object.
+
+    Attributes:
+        _functions (FunctionDefinitionList): Validated function definitions.
+        _prompts (PromptList): Validated input prompts.
+        _model (Small_LLM_Model): The LLM used for inference.
+        _vocab (dict[int, str]): Token-ID → token-string mapping.
+        _valid_function_names (list[str]): Names of all registered functions.
+        _stop_tokens (set[str]): Tokens that legally terminate a value field.
+        _str_valid_tokens (list[int]): Precomputed valid token IDs for strings.
+    """
 
     def __init__(
         self,
@@ -26,6 +43,23 @@ class JSON_Decoder:
         input_file_path: str | Path,
         model: Small_LLM_Model,
     ) -> None:
+        """Initialise the decoder by loading and validating all inputs.
+
+        Args:
+            functions_file_path (str | Path): Path to the JSON file that
+                describes the available functions (functions_definition.json).
+            input_file_path (str | Path): Path to the JSON file containing
+                the natural-language prompts to process
+                (function_calling_tests.json).
+            model (Small_LLM_Model): An initialised LLM instance used to
+                obtain the vocabulary and generate token logits.
+
+        Raises:
+            DataIOError: If any input file is missing, unreadable, or fails
+                schema validation.
+            FileNotFoundError: If the vocabulary file reported by the model
+                does not exist on disk.
+        """
         self._functions = self._load_and_validate_json(
             functions_file_path, FunctionDefinitionList
         )
@@ -47,6 +81,19 @@ class JSON_Decoder:
         current_fn_prefix: str
     ) -> list[int]:
         """Filter tokens that advance towards a valid registered function name.
+
+        Given the characters generated so far for the function name field,
+        return only the token IDs whose string representation keeps the
+        accumulated prefix as a valid prefix of at least one registered
+        function name.
+
+        Args:
+            current_fn_prefix (str): Characters of the function name generated
+                so far (may be empty on the first call).
+
+        Returns:
+            list[int]: Token IDs that may legally follow ``current_fn_prefix``
+                without ruling out every registered function name.
         """
         valid_ids: list[int] = []
         for token_id, token_str in self._vocab.items():
@@ -65,7 +112,22 @@ class JSON_Decoder:
         current_num_prefix: str,
         is_integer: bool = False
     ) -> list[int]:
-        """Filter tokens that advance towards a valid number.
+        """Filter tokens that advance towards a valid JSON number.
+
+        Returns token IDs that, when appended to ``current_num_prefix``, still
+        form a legal prefix of a JSON number (or integer).  Stop tokens are
+        also permitted once the accumulated string is already a complete,
+        valid number.
+
+        Args:
+            current_num_prefix (str): Digits (and optional sign/decimal point)
+                generated so far for this numeric value.
+            is_integer (bool): When ``True``, restrict to integer patterns
+                (no decimal point).  Defaults to ``False``.
+
+        Returns:
+            list[int]: Token IDs that may legally extend the current number
+                prefix, plus stop tokens if the prefix is already complete.
         """
         prefix_re = _INT_PREFIX_RE if is_integer else _NUM_PREFIX_RE
         can_stop = self._is_complete_number(current_num_prefix, is_integer)
@@ -86,14 +148,32 @@ class JSON_Decoder:
         return valid_ids
 
     def get_string_valid_tokens(self) -> list[int]:
-        """Return precomputed valid token IDs for string values."""
+        """Return precomputed valid token IDs for string parameter values.
+
+        Returns:
+            list[int]: Cached list of token IDs that are safe to emit inside
+                a JSON string value (no control characters, no unmatched
+                quotes, no special LLM tokens, no backslashes).
+        """
         return self._str_valid_tokens
 
     def get_boolean_valid_tokens(
         self,
         current_bool_prefix: str
     ) -> list[int]:
-        """Filter tokens that advance towards a valid registered function name.
+        """Filter tokens that advance towards a valid JSON boolean literal.
+
+        Returns token IDs whose string representation keeps
+        ``current_bool_prefix`` as a valid prefix of either ``"true"`` or
+        ``"false"``.
+
+        Args:
+            current_bool_prefix (str): Characters of the boolean value
+                generated so far (may be empty on the first call).
+
+        Returns:
+            list[int]: Token IDs that may legally extend the current boolean
+                prefix without ruling out both ``"true"`` and ``"false"``.
         """
         valid_ids = []
         for token_id, token_str in self._vocab.items():
@@ -112,13 +192,35 @@ class JSON_Decoder:
         num_str: str,
         is_integer: bool = False
     ) -> bool:
-        """Return True if num_str is a finished valid JSON number.
+        """Return True if ``num_str`` is a finished, valid JSON number.
+
+        Args:
+            num_str (str): The candidate number string to validate.
+            is_integer (bool): When ``True``, validate against the integer
+                pattern (no decimal point allowed).  Defaults to ``False``.
+
+        Returns:
+            bool: ``True`` if ``num_str`` matches a complete JSON number (or
+                integer) pattern, ``False`` otherwise.
         """
         pattern = _INT_COMPLETE_RE if is_integer else _NUM_COMPLETE_RE
         return bool(pattern.match(num_str))
 
     def _build_string_valid_tokens(self) -> list[int]:
-        """Filter tokens that advance towards a valid registered function name.
+        """Build and return the list of token IDs safe inside a JSON string.
+
+        Iterates over the full model vocabulary and keeps only tokens that
+        satisfy all of the following constraints:
+        - Non-empty string representation.
+        - Not an LLM special token (``<|...|>`` pattern).
+        - Contains no raw control characters or BPE newline (``Ċ``).
+        - Contains no backslash (prevents malformed escape sequences).
+        - If the token contains a double-quote, it must contain exactly one
+          and all characters after the quote must be stop tokens (i.e. the
+          quote terminates the string field cleanly).
+
+        Returns:
+            list[int]: Precomputed list of valid token IDs for string values.
         """
         valid_ids = []
         for token_id, token_str in self._vocab.items():
@@ -150,6 +252,20 @@ class JSON_Decoder:
         return valid_ids
 
     def _load_vocab_mapping(self) -> dict[int, str]:
+        """Load the model vocabulary and return a token-ID → token-string map.
+
+        Reads the JSON vocabulary file reported by the model and inverts it
+        from the native ``{token_str: token_id}`` format to
+        ``{token_id: token_str}`` for fast lookup during constrained decoding.
+
+        Returns:
+            dict[int, str]: Mapping from integer token IDs to their string
+                representations.
+
+        Raises:
+            FileNotFoundError: If the vocabulary file does not exist at the
+                path returned by the model.
+        """
         vocab_path_str = self._model.get_path_to_vocab_file()
         vocab_file = Path(vocab_path_str)
         if not vocab_file.exists():
@@ -166,6 +282,21 @@ class JSON_Decoder:
     def _load_and_validate_json(
         self, file_path: str | Path, model_cls: Type[T]
     ) -> T:
+        """Load a JSON file and validate its contents against a Pydantic model.
+
+        Args:
+            file_path (str | Path): Path to the JSON file to read.
+            model_cls (Type[T]): Pydantic model class used to validate and
+                deserialise the parsed JSON data.
+
+        Returns:
+            T: A validated instance of ``model_cls``.
+
+        Raises:
+            DataIOError: If the file does not exist, is not a regular file,
+                fails JSON parsing, or does not conform to ``model_cls``'s
+                schema.
+        """
         path = Path(file_path)
         if not path.exists():
             raise DataIOError(error(f"File not found: '{path}'"))
@@ -187,20 +318,25 @@ class JSON_Decoder:
 
     @property
     def stop_tokens(self) -> set[str]:
+        """Set of token strings that legally terminate a parameter value."""
         return self._stop_tokens
 
     @property
     def functions(self) -> FunctionDefinitionList:
+        """Validated list of all registered function definitions."""
         return self._functions
 
     @property
     def valid_function_names(self) -> list[str]:
+        """Ordered list of registered function names derived from definitions."""
         return self._valid_function_names
 
     @property
     def prompts(self) -> PromptList:
+        """Validated list of natural-language prompts to process."""
         return self._prompts
 
     @property
     def vocab(self) -> dict[int, str]:
+        """Token-ID to token-string mapping for the loaded model vocabulary."""
         return self._vocab
