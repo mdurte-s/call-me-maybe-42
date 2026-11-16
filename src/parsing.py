@@ -38,4 +38,9 @@ def create_parser() -> argparse.ArgumentParser:
         default="data/output/function_calls.json",
         help="Path where the generated output JSON should be saved.",
     )
+    parser.add_argument(
+        "--visualize",
+        action="store_true",
+        help="Visualize token-by-token constrained decoding steps.",
+    )
     return parser

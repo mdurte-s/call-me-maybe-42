@@ -6,7 +6,7 @@ export HF_HOME ?= /tmp/$(USER)/huggingface
 PYTHON := uv run python
 SRC_DIR := src
 INPUT := data/input/function_calling_tests.json
-FUNCTIONS := data/input/functions_definitions.json
+FUNCTIONS := data/input/functions_definition.json
 OUTPUT := data/output/function_calls.json
 
 install:
@@ -15,6 +15,10 @@ install:
 run:
 	@mkdir -p $(HF_HOME)
 	$(PYTHON) -m $(SRC_DIR) --functions_definition $(FUNCTIONS) --input $(INPUT) --output $(OUTPUT)
+
+visualize:
+	@mkdir -p $(HF_HOME)
+	$(PYTHON) -m $(SRC_DIR) --functions_definition $(FUNCTIONS) --input $(INPUT) --output $(OUTPUT) --visualize
 
 debug:
 	@mkdir -p $(HF_HOME)
