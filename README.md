@@ -1,4 +1,4 @@
-*This project has been created as part of the 42 school curriculum.*
+*This project has been created as part of the 42 school curriculum by mdurte-s.*
 
 # call me maybe
 
@@ -40,7 +40,7 @@ The key challenge: small LLMs are notoriously unreliable at generating structure
 Clone the repository and install dependencies:
 
 ```bash
-git clone <your-repo-url>
+git clone git@github.com:mdurte-s/call-me-maybe-42.git call_me_maybe
 cd call_me_maybe
 uv sync
 ```
@@ -231,13 +231,13 @@ The implementation was validated manually by:
 - [Qwen3 model card](https://huggingface.co/Qwen/Qwen3-0.6B) — the default LLM used in this project
 - [ChatML format](https://huggingface.co/docs/transformers/chat_templating) — prompt template format used to structure the LLM input
 
-### How AI was used
+### How AI Was Used
 
-AI tools (GitHub Copilot / Claude) were used in the following areas:
+Artificial Intelligence was used strictly as a productivity and learning tool throughout development. Specifically, it assisted with:
 
-- **Docstrings:** generating and refining Google-style docstrings for all functions and classes
-- **Regex patterns:** drafting and verifying the number-prefix and number-complete regular expressions used in `decoder.py`
-- **Error message wording:** suggesting clear, actionable error messages for the `DataIOError` paths
-- **README structure:** drafting the initial outline of this document
+- **Error Handling & UX:** Refining clear, actionable error messages for `DataIOError` and file I/O edge cases.
+- **Debugging & Edge Cases:** Identifying tokenizer boundary issues (such as BPE space markers and closing quotes) and resolving static typing (`mypy`) errors.
+- **Python Packaging & Tooling:** Clarifying `uv` dependency management, `pyproject.toml` configuration, and strict linting rules (`flake8` / `mypy`).
+- **Documentation:** Structuring and polishing docstrings and this `README.md`.
 
-All generated content was reviewed, tested, and adapted. No code was accepted without understanding and manually verifying its correctness.
+All architectural decisions, constrained decoding logic, and Pydantic schemas were designed and implemented manually.
