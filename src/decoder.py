@@ -328,7 +328,8 @@ class JSON_Decoder:
 
     @property
     def valid_function_names(self) -> list[str]:
-        """Ordered list of registered function names derived from definitions."""
+        """Ordered list of registered function names derived from definitions.
+        """
         return self._valid_function_names
 
     @property
