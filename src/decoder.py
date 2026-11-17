@@ -1,3 +1,5 @@
+"""Constrained decoding logic, vocabulary validation, and token masking."""
+
 import re
 import json
 from pathlib import Path
@@ -35,6 +37,12 @@ class JSON_Decoder:
         _valid_function_names (list[str]): Names of all registered functions.
         _stop_tokens (set[str]): Tokens that legally terminate a value field.
         _str_valid_tokens (list[int]): Precomputed valid token IDs for strings.
+        _fn_candidate_vocab (dict[int, str]): Pre-filtered vocabulary of tokens
+            composed of function name characters.
+        _num_candidate_vocab (dict[int, str]): Pre-filtered vocabulary of
+            tokens composed of numeric characters and stop tokens.
+        _bool_candidate_vocab (dict[int, str]): Pre-filtered vocabulary of
+            tokens composed of boolean characters.
     """
 
     def __init__(
@@ -76,6 +84,30 @@ class JSON_Decoder:
         self._stop_tokens: set[str] = {",", "}", " ", "Ġ", "Ċ"}
         self._str_valid_tokens: list[int] = self._build_string_valid_tokens()
 
+        fn_chars = set("".join(self._valid_function_names))
+        self._fn_candidate_vocab: dict[int, str] = {
+            tid: tstr
+            for tid, tstr in self._vocab.items()
+            if tstr and all(ch in fn_chars for ch in tstr)
+        }
+
+        num_chars = set("0123456789.-")
+        self._num_candidate_vocab: dict[int, str] = {
+            tid: tstr
+            for tid, tstr in self._vocab.items()
+            if tstr and (
+                tstr in self._stop_tokens
+                or all(ch in num_chars for ch in tstr)
+            )
+        }
+
+        bool_chars = set("truefals")
+        self._bool_candidate_vocab: dict[int, str] = {
+            tid: tstr
+            for tid, tstr in self._vocab.items()
+            if tstr and len(tstr) <= 5 and all(ch in bool_chars for ch in tstr)
+        }
+
     def get_function_name_valid_tokens(
         self,
         current_fn_prefix: str
@@ -96,11 +128,9 @@ class JSON_Decoder:
                 without ruling out every registered function name.
         """
         valid_ids: list[int] = []
-        for token_id, token_str in self._vocab.items():
-            if not token_str:
-                continue
+        for token_id, token_str in self._fn_candidate_vocab.items():
 
-            candidate = current_fn_prefix + token_str  # t
+            candidate = current_fn_prefix + token_str
             if any(name.startswith(candidate)
                    for name in self._valid_function_names):
                 valid_ids.append(token_id)
@@ -132,9 +162,7 @@ class JSON_Decoder:
         prefix_re = _INT_PREFIX_RE if is_integer else _NUM_PREFIX_RE
         can_stop = self._is_complete_number(current_num_prefix, is_integer)
         valid_ids: list[int] = []
-        for token_id, token_str in self._vocab.items():
-            if not token_str:
-                continue
+        for token_id, token_str in self._num_candidate_vocab.items():
 
             candidate = current_num_prefix + token_str
             if prefix_re.match(candidate):
@@ -143,7 +171,6 @@ class JSON_Decoder:
 
             if can_stop and token_str in self._stop_tokens:
                 valid_ids.append(token_id)
-                continue  # review this!
 
         return valid_ids
 
@@ -176,10 +203,7 @@ class JSON_Decoder:
                 prefix without ruling out both ``"true"`` and ``"false"``.
         """
         valid_ids = []
-        for token_id, token_str in self._vocab.items():
-            if not token_str:
-                continue
-
+        for token_id, token_str in self._bool_candidate_vocab.items():
             candidate = current_bool_prefix + token_str
             if ("true".startswith(candidate)
                     or "false".startswith(candidate)):

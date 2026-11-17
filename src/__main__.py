@@ -1,10 +1,12 @@
+"""Main entry point for running the function-calling pipeline."""
+
 import sys
 import json
 from llm_sdk.llm_sdk import Small_LLM_Model
 from .parsing import create_parser
 from .utils import error, bold_y
 from .decoder import JSON_Decoder
-from .generator import generate_function_call
+from .generator import Generator
 from .models import (
     FunctionCallResult,
     FunctionCallResultList,
@@ -19,12 +21,12 @@ def main() -> None:
     Entry point for ``python -m src``.  Performs the following steps in order:
 
     1. Parse CLI arguments (``--functions_definition``, ``--input``,
-       ``--output``).
+       ``--output``, ``--visualize``).
     2. Load the ``Small_LLM_Model`` from ``llm_sdk``.
     3. Initialise a ``JSON_Decoder`` with the function definitions and input
        prompts, which also loads the model vocabulary.
-    4. Iterate over every prompt and produce a ``FunctionCallResult`` via
-       constrained decoding (``generate_function_call``).
+    4. Initialise a ``Generator`` and iterate over each prompt to produce a
+       ``FunctionCallResult`` via constrained decoding.
     5. Wrap the results in a ``FunctionCallResultList`` and persist them to
        the output JSON file via ``save_json_results``.
 
@@ -44,27 +46,21 @@ def main() -> None:
             input_file_path=cli_args.input,
             model=model
         )
-        functions = [f for f in decoder.functions.root]
-        function_models = [f.model_dump() for f in decoder.functions.root]
         prompts = decoder.prompts.root
-        vocab = decoder.vocab
-
+        print(f"\n{bold_y('Initializing Generator ...')}", end=" ")
+        gen = Generator(
+            model=model,
+            decoder=decoder,
+            visualize=cli_args.visualize
+        )
+        print("\033[0;32m[OK]\033[0m")
         results: list[FunctionCallResult] = []
 
         print(f"\n{bold_y('Analysing Prompts ...')}")
         for i, prompt in enumerate(prompts):
             print(f' • prompt[{i}]: "{prompt.prompt}"', end=" ")
-            results.append(
-                generate_function_call(
-                    model=model,
-                    decoder=decoder,
-                    functions=functions,
-                    function_models=function_models,
-                    prompt=prompt,
-                    vocab=vocab
-                )
-            )
-            print("\033[0;32m[OK]\033[0m\n")
+            results.append(gen.generate_function_call(prompt.prompt))
+            print("\033[0;32m[OK]\033[0m")
 
         results_wrapped = FunctionCallResultList(results)
 

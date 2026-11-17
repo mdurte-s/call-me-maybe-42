@@ -1,10 +1,12 @@
+"""Command-line argument parsing for the function calling CLI."""
+
 import argparse
 
 
 def create_parser() -> argparse.ArgumentParser:
     """Create and return the CLI argument parser for the application.
 
-    Defines three optional arguments:
+    Defines optional arguments:
 
     - ``--functions_definition``: path to the JSON file describing available
       functions (default: ``data/input/functions_definition.json``).
@@ -12,6 +14,7 @@ def create_parser() -> argparse.ArgumentParser:
       (default: ``data/input/function_calling_tests.json``).
     - ``--output``: path where the generated function-call results will be
       written (default: ``data/output/function_calls.json``).
+    - ``--visualize``: enable real-time visualization of decoding steps.
 
     Returns:
         argparse.ArgumentParser: Configured parser ready to call

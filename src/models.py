@@ -1,3 +1,5 @@
+"""Pydantic data models and schemas for function calling I/O."""
+
 import json
 from pathlib import Path
 from typing import Any
